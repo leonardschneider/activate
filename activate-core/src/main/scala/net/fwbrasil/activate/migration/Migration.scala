@@ -94,7 +94,18 @@ object Migration {
                 Reflection.getAllImplementorsNames(List(classOf[Migration], context.getClass), classOf[Migration])
                     .map(name => ActivateContext.classLoaderFor(name).loadClass(name))
                     .filter(e => !e.isInterface && !Modifier.isAbstract(e.getModifiers()) && !classOf[ManualMigration].isAssignableFrom(e))
-                    .map(_.newInstance.asInstanceOf[Migration])
+                    .map { e => 
+                      val ctors = e.getConstructors.filter { c =>
+                        val params = c.getParameterTypes
+                        params.size == 1 && params(0).isInstance(context)
+                      }
+                      if(ctors.nonEmpty) {
+                        println("Instantiating migration with context argument")
+                        ctors(0).newInstance(context).asInstanceOf[Migration]
+                      }
+                      else
+                        e.newInstance.asInstanceOf[Migration]
+                    }
                     .toList
                     .sortBy(_.timestamp)
             val filtered =

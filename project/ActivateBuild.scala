@@ -240,7 +240,7 @@ object ActivateBuild extends Build {
 			    activateSlick, activateMongoAsync, activatePrevalent, activateCassandraAsync, activateLift),
 			settings = commonSettings ++ Seq(
 		     	libraryDependencies ++= 
-		    	  Seq(junit, specs2, mysql, objbd6, postgresql, db2jcc,
+		    	  Seq(junit, specs2, mysql, objbd6, postgresql,
 		    	  	h2, derby, hqsqldb, gfork, blueprintsNeo4j, jtds),
 		    	 scalacOptions ++= Seq("-Xcheckinit")
 		    )
@@ -261,7 +261,7 @@ object ActivateBuild extends Build {
     def commonSettings = 
     	Defaults.defaultSettings ++ Seq(
     		organization := "net.fwbrasil",
-    		version := "1.4.4",
+    		version := "1.4.4-patch1",
     		scalaVersion := "2.10.1",
     		javacOptions ++= Seq("-source", "1.5", "-target", "1.5"),
     	    publishMavenStyle := true,
