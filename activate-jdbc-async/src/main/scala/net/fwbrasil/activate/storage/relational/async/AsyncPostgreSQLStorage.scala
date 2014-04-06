@@ -50,6 +50,7 @@ trait AsyncPostgreSQLStorage extends RelationalStorage[Future[PostgreSQLConnecti
     def charset = CharsetUtil.UTF_8
     def poolConfiguration = PoolConfiguration.Default
     private var pool = new ConnectionPool(objectFactory, poolConfiguration)
+    def close = pool.close
 
     private val dialect = postgresqlDialect
 
