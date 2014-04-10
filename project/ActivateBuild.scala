@@ -257,11 +257,17 @@ object ActivateBuild extends Build {
   		"Sonatype OSS Snapshots" at "http://oss.sonatype.org/content/repositories/snapshots/"
   	)
 
-    	
+    
     def commonSettings = 
     	Defaults.defaultSettings ++ Seq(
     		organization := "net.fwbrasil",
-    		version := "1.4.4-patch1",
+        version := {
+          val v = System.getenv("VERSION")
+          if(v == null)
+            "1.4.4-patch1-SNAPSHOT"
+          else
+            v
+        },
     		scalaVersion := "2.10.1",
     		javacOptions ++= Seq("-source", "1.5", "-target", "1.5"),
     	    publishMavenStyle := true,
