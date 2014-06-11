@@ -10,6 +10,7 @@ import net.fwbrasil.activate.entity.EntityValue
 import net.fwbrasil.activate.util.ManifestUtil._
 import net.fwbrasil.activate.util.RichList._
 import net.fwbrasil.activate.ActivateContext
+import net.fwbrasil.activate.Tenant
 import scala.collection.mutable.{ Map => MutableMap }
 import net.fwbrasil.activate.entity.EntityHelper
 import net.fwbrasil.activate.entity.EntityMetadata
@@ -33,7 +34,7 @@ object Migration {
 
     private[activate] val storageVersionCache = MutableMap[String, StorageVersion]()
 
-    private[activate] def storageVersion(ctx: ActivateContext) = {
+    private[activate] def storageVersion(ctx: ActivateContext)(implicit tenant: Tenant = ctx.TenantAdmin) = {
         class StorageVersionMigration extends ManualMigration()(ctx) {
             override val name = "Initial database setup (StorageVersion)"
             override val developers = List("fwbrasil")
@@ -61,7 +62,7 @@ object Migration {
         })
     }
 
-    private def storageVersionTuple(ctx: ActivateContext) = {
+    private def storageVersionTuple(ctx: ActivateContext)(implicit tenant: Tenant = ctx.TenantAdmin) = {
         val version = storageVersion(ctx)
         ctx.transactional {
             (version.lastScript, version.lastAction)
@@ -82,15 +83,15 @@ object Migration {
         setupActions.foreach(execute(context, _))
     }
 
-    def update(context: ActivateContext): Unit =
+    def update(context: ActivateContext)(implicit tenant: Tenant = context.TenantAdmin): Unit =
         updateTo(context, Long.MaxValue)
 
-    def updateTo(context: ActivateContext, timestamp: Long): Unit =
+    def updateTo(context: ActivateContext, timestamp: Long)(implicit tenant: Tenant = context.TenantAdmin): Unit =
         context.synchronized {
             execute(context, actionsOnInterval(context, storageVersionTuple(context), (timestamp, Int.MaxValue), false), false)
         }
 
-    def revertTo(context: ActivateContext, timestamp: Long): Unit =
+    def revertTo(context: ActivateContext, timestamp: Long)(implicit tenant: Tenant = context.TenantAdmin): Unit =
         context.synchronized {
             execute(context, actionsOnInterval(context, (timestamp, Int.MaxValue), storageVersionTuple(context), true), true)
         }
@@ -119,7 +120,7 @@ object Migration {
             .filter(_.hasToRun(from, to, isRevert))
     }
 
-    private def execute(context: ActivateContext, actions: List[MigrationAction], isRevert: Boolean): Unit =
+    private def execute(context: ActivateContext, actions: List[MigrationAction], isRevert: Boolean)(implicit tenant: Tenant = context.TenantAdmin): Unit =
         for (action <- actions) {
             execute(context, action)
             context.transactional {
@@ -243,28 +244,28 @@ abstract class Migration(implicit val context: ActivateContext) {
             e.entityClass != classOf[StorageVersion]
                 && ActivateContext.contextFor(e.entityClass) == context)
 
-    def createTableForAllEntities =
+    def createTableForAllEntities(implicit tenant: Tenant = context.TenantAdmin) =
         IfNotExistsBag(entitiesMetadatas.map(createTableForEntityMetadata))
 
-    def createTableForEntity[E <: BaseEntity: Manifest] =
+    def createTableForEntity[E <: BaseEntity: Manifest](implicit tenant: Tenant = context.TenantAdmin) =
         createTableForEntityMetadata(EntityHelper.getEntityMetadata(erasureOf[E]))
 
-    def createInexistentColumnsForAllEntities =
+    def createInexistentColumnsForAllEntities(implicit tenant: Tenant = context.TenantAdmin) =
         entitiesMetadatas.map(createInexistentColumnsForEntityMetadata)
 
-    def createInexistentColumnsForEntity[E <: BaseEntity: Manifest] =
+    def createInexistentColumnsForEntity[E <: BaseEntity: Manifest](implicit tenant: Tenant = context.TenantAdmin) =
         createInexistentColumnsForEntityMetadata(EntityHelper.getEntityMetadata(erasureOf[E]))
 
-    def createReferencesForAllEntities =
+    def createReferencesForAllEntities(implicit tenant: Tenant = context.TenantAdmin) =
         IfNotExistsBag(entitiesMetadatas.map(createReferencesForEntityMetadata).flatten)
 
-    def removeReferencesForAllEntities =
+    def removeReferencesForAllEntities(implicit tenant: Tenant = context.TenantAdmin) =
         IfExistsBag(entitiesMetadatas.map(removeReferencesForEntityMetadata).flatten)
 
-    def createReferencesForEntity[E <: BaseEntity: Manifest] =
+    def createReferencesForEntity[E <: BaseEntity: Manifest](implicit tenant: Tenant = context.TenantAdmin) =
         IfNotExistsBag(createReferencesForEntityMetadata(EntityHelper.getEntityMetadata(erasureOf[E])))
 
-    def removeAllEntitiesTables = {
+    def removeAllEntitiesTables(implicit tenant: Tenant = context.TenantAdmin) = {
         val metadatas = entitiesMetadatas
         val tree = new DependencyTree(metadatas.toSet)
         for (metadata <- metadatas) {
@@ -275,7 +276,7 @@ abstract class Migration(implicit val context: ActivateContext) {
         }
         val resolved = tree.resolve.getOrElse(metadatas.toList)
         val actionList = resolved.map(metadata => {
-            val mainTable = table(manifestClass(metadata.entityClass))
+            val mainTable = table(metadata.name)
             val lists = metadata.persistentListPropertiesMetadata
             val removeLists = lists.map(list => {
                 val (columnName, listTableName) = EntityPropertyMetadata.nestedListNamesFor(metadata, list)
@@ -286,11 +287,11 @@ abstract class Migration(implicit val context: ActivateContext) {
         IfExistsWithCascadeBag(actionList)
     }
 
-    private def createTableForEntityMetadata(metadata: EntityMetadata) = {
+    private def createTableForEntityMetadata(metadata: EntityMetadata)(implicit tenant: Tenant = context.TenantAdmin) = {
         val (normalColumns, listColumns) =
             metadata.persistentPropertiesMetadata.filter(!_.isTransient).
                 partition(p => p.propertyType != classOf[List[_]] && p.propertyType != classOf[LazyList[_]])
-        val ownerTable = table(manifestClass(metadata.entityClass))
+        val ownerTable = table(metadata.name)
         val mainAction =
             ownerTable.createTable(columns =>
                 for (property <- normalColumns if (property.name != "id")) {
@@ -305,8 +306,8 @@ abstract class Migration(implicit val context: ActivateContext) {
         IfNotExistsBag(List(mainAction) ++ nestedListsActions)
     }
 
-    private def createInexistentColumnsForEntityMetadata(metadata: EntityMetadata) = {
-        val tableInstance = table(manifestClass(metadata.entityClass))
+    private def createInexistentColumnsForEntityMetadata(metadata: EntityMetadata)(implicit tenant: Tenant = context.TenantAdmin) = {
+        val tableInstance = table(metadata.name)
         for (property <- metadata.persistentPropertiesMetadata if (property.name != "id"))
             tableInstance.addColumn(columnDef =>
                 columnDef.column(property.name)(manifestClass(property.propertyType), property.tval)).ifNotExists
@@ -318,15 +319,15 @@ abstract class Migration(implicit val context: ActivateContext) {
     private def shortConstraintName(tableName: String, propertyName: String) =
         max(tableName, 14) + "_" + max(propertyName, 15)
 
-    private def createReferencesForEntityMetadata(metadata: EntityMetadata) =
+    private def createReferencesForEntityMetadata(metadata: EntityMetadata)(implicit tenant: Tenant = context.TenantAdmin) =
         referencesForEntityMetadata(metadata)
             .map(reference =>
-                table(manifestClass(metadata.entityClass)).addReference(reference._1, reference._2, reference._3)) ++
+                table(metadata.name).addReference(reference._1, reference._2, reference._3)) ++
             nestedListsReferencesForEntityMetadata(metadata).map {
                 reference => table(reference._1, reference._2).addReference("value", reference._3, reference._4)
             }
 
-    private def referencesForEntityMetadata(metadata: EntityMetadata) =
+    private def referencesForEntityMetadata(metadata: EntityMetadata)(implicit tenant: Tenant = context.TenantAdmin) =
         for (
             property <- metadata.persistentPropertiesMetadata;
             if (classOf[BaseEntity].isAssignableFrom(property.propertyType) &&
@@ -335,7 +336,7 @@ abstract class Migration(implicit val context: ActivateContext) {
                 context.storageFor(metadata.entityClass) == context.storageFor(property.propertyType.asInstanceOf[Class[BaseEntity]]))
         ) yield (property.name, EntityHelper.getEntityName(property.propertyType), shortConstraintName(metadata.name, property.name))
 
-    private def nestedListsReferencesForEntityMetadata(metadata: EntityMetadata) =
+    private def nestedListsReferencesForEntityMetadata(metadata: EntityMetadata)(implicit tenant: Tenant = context.TenantAdmin) =
         for (
             property <- metadata.persistentListPropertiesMetadata;
             if (classOf[BaseEntity].isAssignableFrom(property.genericParameter) &&
@@ -348,9 +349,9 @@ abstract class Migration(implicit val context: ActivateContext) {
             EntityHelper.getEntityName(property.genericParameter),
             shortConstraintName(metadata.name, property.name))
 
-    private def removeReferencesForEntityMetadata(metadata: EntityMetadata) =
+    private def removeReferencesForEntityMetadata(metadata: EntityMetadata)(implicit tenant: Tenant = context.TenantAdmin) =
         referencesForEntityMetadata(metadata).map(reference =>
-            table(manifestClass(metadata.entityClass)).removeReference(reference._1, reference._2, reference._3)) ++
+            table(metadata.name).removeReference(reference._1, reference._2, reference._3)) ++
             nestedListsReferencesForEntityMetadata(metadata).map {
                 reference => table(reference._1, reference._2).removeReference("value", reference._3, reference._4)
             }
@@ -440,16 +441,16 @@ abstract class Migration(implicit val context: ActivateContext) {
             IfExistsBag(List(removeColumnAction, removeTableAction))
         }
     }
-    def table[E <: BaseEntity: Manifest]: Table =
+    def table[E <: BaseEntity: Manifest](implicit tenant: Tenant = context.TenantAdmin): Table =
         table(EntityHelper.getEntityName(erasureOf[E]), context.storageFor(erasureOf[E]), idColumnFor[E])
     def table(name: String, storage: Storage[_]): Table =
         table(name, storage, stringIdColumnDef)
     def table(name: String, storage: Storage[_], idColumnDef: (ColumnDef) => Unit): Table =
         Table(name, storage, idColumnDef)
-    def table(name: String): Table =
+    def table(name: String)(implicit tenant: Tenant): Table =
         table(name, stringIdColumnDef)
-    def table(name: String, idColumnDef: (ColumnDef) => Unit): Table =
-        Table(name, context.storage, idColumnDef)
+    def table(name: String, idColumnDef: (ColumnDef) => Unit)(implicit tenant: Tenant = context.TenantAdmin): Table =
+        Table(name, tenant.storage, idColumnDef)
     def customScript(f: => Unit) =
         addAction(CustomScriptAction(this, nextNumber, () => context.transactional(f)))
     def up: Unit

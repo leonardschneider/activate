@@ -31,7 +31,7 @@ class TransactionHandle(
         finally finallyBlock()
 }
 
-trait Storage[T] extends Logging {
+trait Storage[+T] extends Logging {
 
     protected[activate] def toStorage(
         readList: List[(BaseEntity, Long)],

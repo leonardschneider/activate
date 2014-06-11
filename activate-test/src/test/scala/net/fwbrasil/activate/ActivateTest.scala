@@ -37,6 +37,7 @@ object ActivateTestContextCategory extends Enumeration {
     val relational_mem = Value("relational_mem")
     val proprietary = Value("proprietary")
     val polyglot = Value("polyglot")
+    val multitenancy = Value("multitenancy")
 }
 
 object ActivateTest {
@@ -51,7 +52,9 @@ object ActivateTest {
             relational_mem -> List(derbyContext, h2Context, hsqldbContext),
             proprietary -> List(oracleContext, db2Context, sqlServerContext),
             //            cassandra -> List(asyncCassandraContext),
-            polyglot -> List(polyglotContext))
+            polyglot -> List(polyglotContext) //,
+            //multitenancy -> List(multitenantContext)
+            )
 
     val allContexts = contextsCategoriesMap.values.flatten
 

@@ -56,17 +56,47 @@ trait ActivateContext
 
     val storage: Storage[_]
 
+    var _tenants: Set[Tenant] = Set()
+
+    def tenants = _tenants
+
+    def all = tenants + TenantAdmin
+
+    def createTenant(mkStorage: => Storage[_]): Tenant = {
+      val tenant = new Tenant {
+        val context = ActivateContext.this.context
+        val storage = mkStorage
+      }
+      _tenants += tenant
+      tenant
+    }
+
+    implicit object TenantAdmin extends Tenant {
+      val context = ActivateContext.this.context
+      val storage = ActivateContext.this.storage
+    }
+
     protected[activate] def storages =
         (additionalStorages.keys.toSet + storage).toList
 
-    private[activate] def storageFor(query: Query[_]): Storage[_] =
+    private[activate] def storageFor(query: Query[_])(implicit tenant: Tenant): Storage[_] =
+      if(tenant == TenantAdmin) {
         query.from.entitySources.map(source => storageFor(source.entityClass))
             .toSet.onlyOne(storages => s"Query $query uses entities from different storages: $storages.")
+      }
+      else {
+        tenant.storage
+      }
 
-    private[activate] def storageFor(entityClass: Class[_]): Storage[Any] =
+    private[activate] def storageFor(entityClass: Class[_])(implicit tenant: Tenant): Storage[Any] =
+      if(tenant == TenantAdmin) {
         additionalStoragesByEntityClasses.getOrElse(
             entityClass.asInstanceOf[Class[BaseEntity]],
             storage.asInstanceOf[Storage[Any]])
+      }
+      else {
+        tenant.storage
+      }
 
     private val additionalStoragesByEntityClasses =
         unsafeLazy((for ((storage, classes) <- additionalStorages.asInstanceOf[Map[Storage[Any], Set[Class[BaseEntity]]]]) yield classes.map((_, storage))).flatten.toMap)

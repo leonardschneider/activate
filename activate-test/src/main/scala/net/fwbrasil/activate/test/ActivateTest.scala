@@ -114,7 +114,8 @@ object recreateDatabaseStrategy extends ActivateTestStrategy {
         ctx.reinitializeContext
     }
 
-    private def cleanDatabase(implicit ctx: ActivateContext) =
+    private def cleanDatabase(implicit ctx: ActivateContext) = {
+        import ctx._
         ctx.storage match {
             case storage: TransientMemoryStorage =>
                 storage.directAccess.clear
@@ -126,6 +127,7 @@ object recreateDatabaseStrategy extends ActivateTestStrategy {
                     }
                 }.execute
         }
+    }
 }
 
 trait ActivateTest {
